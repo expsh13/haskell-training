@@ -1,4 +1,7 @@
 import Data.List.Split (splitOn)
+import Text.Read (readMaybe)
+
+data List = OrderList | UnOrderList
 
 processParts :: String -> String -> [(Integer, String)] -> String
 processParts openTag closeTag = foldl addTag ""
@@ -41,32 +44,52 @@ parseLine str =
     _ -> parseInline str
 
 parseList :: String -> String
-parseList item = "  <li>" ++ parseInline (drop 2 item) ++ "</li>"
-
-parseListGroup :: [String] -> [String]
-parseListGroup items = open : parsedList ++ [close]
+parseList item = "  <li>" ++ parseInline planeText ++ "</li>"
   where
-    open = "<ul>"
-    close = "</ul>"
+    planeText = case words item of
+      [] -> ""
+      (_ : rest) -> unwords rest
+
+parseListGroup :: String -> String -> [String] -> [String]
+parseListGroup openTag closeTag items = openTag : parsedList ++ [closeTag]
+  where
     parsedList = map parseList items
 
-isListItem :: String -> Bool
-isListItem item = case words item of
+-- unOrderListSpan :: [String] -> ([String], [String])
+-- unOrderListSpan = span isUnOrderList
+
+isUnOrderList :: String -> Bool
+isUnOrderList item = case words item of
   "-" : _ -> True
   _ -> False
 
-listSpan :: [String] -> ([String], [String])
-listSpan = span isListItem
+isOrderList :: String -> Bool
+isOrderList item =
+  case words item of
+    [] -> False
+    (firstWord : _) ->
+      case readMaybe (init firstWord) :: Maybe Int of
+        Nothing -> False
+        Just _ -> not (null firstWord) && last firstWord == '.'
+
+isList :: String -> Maybe List
+isList lineStr
+  | isUnOrderList lineStr = Just UnOrderList
+  | isOrderList lineStr = Just OrderList
+  | otherwise = Nothing
 
 -- 全行の配列を受け取る
 parseMarkdown :: [String] -> [String]
 parseMarkdown [] = []
-parseMarkdown (x : xs) = case isListItem x of
+parseMarkdown (x : xs) = case isList x of
   -- リストの時
-  True -> parseListGroup list ++ parseMarkdown noList
+  Just UnOrderList -> parseListGroup "<ul>" "</ul>" list ++ parseMarkdown noList
     where
-      (list, noList) = listSpan (x : xs)
-  False -> parseLine x : parseMarkdown xs
+      (list, noList) = span isUnOrderList (x : xs)
+  Just OrderList -> parseListGroup "<ol>" "</ol>" list ++ parseMarkdown noList
+    where
+      (list, noList) = span isOrderList (x : xs)
+  Nothing -> parseLine x : parseMarkdown xs
 
 main :: IO ()
 main = do
